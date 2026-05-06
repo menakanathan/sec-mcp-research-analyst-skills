@@ -1,0 +1,17 @@
+{
+  "wmt_basic_eps_yoy_2024": {
+    "description": "Walmart Basic EPS YoY change FY2024 vs FY2023",
+    "expected_value": -2.63,
+    "tolerance": 0.25
+  },
+  "wmt_operating_income_yoy_2024": {
+    "description": "Walmart Operating Income YoY change FY2024 vs FY2023",
+    "expected_value": 4.2,
+    "tolerance": 0.5
+  },
+  "wmt_dividend_payout_ratio_2024": {
+    "description": "Walmart dividend payout ratio FY2024",
+    "expected_value": 39.0,
+    "tolerance": 2.0
+  }
+}
