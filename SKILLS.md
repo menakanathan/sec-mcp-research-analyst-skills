@@ -5,6 +5,60 @@ Separate reasoning (LLM) from execution (MCP tools)
 
 ## Tools
 
+## RAG Skills
+
+### build_sec_rag_index
+
+Builds a semantic vector index from the latest SEC filing.
+
+Use when:
+- User wants to prepare a filing for semantic search
+- User asks to build or refresh the RAG index
+
+Input:
+- ticker
+- form_type
+
+Output:
+- index path
+- chunk count
+- filing metadata
+
+---
+
+### rag_search_sec_filing
+
+Performs semantic search over SEC filing chunks.
+
+Use when:
+- User asks for relevant filing evidence
+- User asks to search conceptually, not only by keyword
+
+Input:
+- ticker
+- form_type
+- query
+- top_k
+
+Output:
+- retrieved chunks
+- similarity scores
+
+---
+
+### answer_question_with_rag
+
+Answers a question using semantic retrieval and retrieved SEC filing chunks.
+
+Use when:
+- User asks narrative SEC filing questions
+- User asks risks, strategy, growth drivers, competition, AI investments, supply chain, or management discussion questions
+
+Output:
+- analyst-style answer
+- retrieved chunks
+- similarity scores
+
 ### get_company_cik
 Returns CIK for ticker
 
@@ -16,6 +70,7 @@ Returns relevant chunks
 
 ### answer_question_from_sec_filing
 Full analysis tool
+
 
 ## Agent Behavior
 

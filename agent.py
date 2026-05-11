@@ -5,12 +5,12 @@ from typing import Any, Dict, List
 
 from openai import OpenAI
 
-
 FINANCIAL_KEYWORDS = [
     "eps",
     "earnings per share",
     "operating income",
     "revenue",
+    "dividends",
     "net income",
     "dividend",
     "payout",
@@ -25,6 +25,54 @@ FINANCIAL_KEYWORDS = [
     "assets",
     "liabilities",
     "equity",
+]
+
+RAG_KEYWORDS = [
+    "risk",
+    "risks",
+    "management",
+    "discussion",
+    "md&a",
+    "strategy",
+    "strategic",
+    "competition",
+    "competitive",
+    "market",
+    "growth drivers",
+    "demand",
+    "guidance",
+    "future outlook",
+    "outlook",
+    "supply chain",
+    "supplier",
+    "customer concentration","uncertainty", "uncertainties",
+    "cybersecurity",
+    "security",
+    "privacy",
+    "regulation",
+    "regulatory",
+    "lawsuit",
+    "litigation",
+    "macro",
+    "inflation",
+    "interest rates",
+    "ai",
+    "artificial intelligence",
+    "copilot",
+    "gpu",
+    "data center",
+    "cloud",
+    "investments",
+    "capex",
+    "capital allocation",
+    "operations",
+    "manufacturing",
+    "inventory",
+    "headwinds",
+    "tailwinds",
+    "semiconductor",
+    "tariffs",
+    "geopolitical",
 ]
 
 EVALUATION_KEYWORDS = [
@@ -55,6 +103,55 @@ def load_skills_md() -> str:
     except FileNotFoundError:
         return ""
 
+def build_execution_plan(question: str, selected_tools: list):
+
+    steps = []
+
+    step_number = 1
+
+    for tool in selected_tools:
+
+        if tool == "answer_question_with_rag":
+            steps.append(
+                f"{step_number}. Perform semantic RAG retrieval from SEC filing"
+            )
+
+        elif tool == "get_financial_analytics":
+            steps.append(
+                f"{step_number}. Compute structured financial analytics from SEC XBRL data"
+            )
+
+        elif tool == "evaluate_financial_answer":
+            steps.append(
+                f"{step_number}. Validate financial calculations and fiscal-year consistency"
+            )
+
+        elif tool == "build_sec_rag_index":
+            steps.append(
+                f"{step_number}. Build semantic vector index for SEC filing"
+            )
+
+        elif tool == "rag_search_sec_filing":
+            steps.append(
+                f"{step_number}. Retrieve top semantic filing evidence chunks"
+            )
+
+        elif tool == "send_research_digest":
+            steps.append(
+                f"{step_number}. Generate and distribute research digest"
+            )
+
+        else:
+            steps.append(
+                f"{step_number}. Execute tool: {tool}"
+            )
+
+        step_number += 1
+
+    return {
+        "user_goal": question,
+        "steps": steps
+    }
 
 def extract_json_from_text(text: str) -> Dict[str, Any]:
     """
@@ -97,7 +194,6 @@ def infer_metric_name(question: str) -> str:
 
     return "wmt_dividend_payout_ratio_2024"
 
-
 def extract_numeric_answer(question: str) -> str:
     """
     Extracts the last numeric value from an evaluation-style question.
@@ -111,17 +207,23 @@ def extract_numeric_answer(question: str) -> str:
 def is_evaluation_question(question: str) -> bool:
     q = question.lower()
     return any(keyword in q for keyword in EVALUATION_KEYWORDS)
-
+ 
 
 def is_financial_question(question: str) -> bool:
     q = question.lower()
     return any(keyword in q for keyword in FINANCIAL_KEYWORDS)
 
+def is_rag_question(question: str) -> bool:
+    q = question.lower()
+    return any(keyword in q for keyword in RAG_KEYWORDS)   
 
 def fallback_plan(ticker: str, form_type: str, question: str) -> Dict[str, Any]:
     """
     Deterministic fallback when OpenAI API is unavailable or quota-limited.
     """
+    # ---------------------------------------------------------
+    # Evaluation questions
+    # ---------------------------------------------------------
     if is_evaluation_question(question):
         return {
             "tool_name": "evaluate_financial_answer",
@@ -129,18 +231,47 @@ def fallback_plan(ticker: str, form_type: str, question: str) -> Dict[str, Any]:
                 "answer": extract_numeric_answer(question),
                 "metric_name": infer_metric_name(question),
             },
-            "reason": "Fallback selected evaluation because the question asks to validate an answer.",
+            "reason": (
+                "Fallback selected evaluation because "
+                "the question asks to validate an answer."
+            ),
         }
-
+    # ---------------------------------------------------------
+    # Structured financial analytics
+    # ---------------------------------------------------------
     if is_financial_question(question):
         return {
             "tool_name": "analyze_financial_metrics",
             "tool_args": {
                 "ticker": ticker,
             },
-            "reason": "Fallback selected financial analytics because the question asks about financial metrics.",
+            "reason": (
+                "Fallback selected financial analytics "
+                "because the question asks about financial metrics."
+            ),
         }
 
+    # ---------------------------------------------------------
+    # Narrative / RAG questions
+    # ---------------------------------------------------------
+    if is_rag_question(question):
+        return {
+            "tool_name": "answer_question_with_rag",
+            "tool_args": {
+                "ticker": ticker,
+                "form_type": form_type,
+                "question": question,
+            },
+            "reason": (
+                "Narrative SEC filing question detected. "
+                "Using semantic RAG retrieval."
+            ),
+        }
+
+
+    # ---------------------------------------------------------
+    # Generic filing fallback
+    # ---------------------------------------------------------
     return {
         "tool_name": "answer_question_from_sec_filing",
         "tool_args": {
@@ -148,9 +279,10 @@ def fallback_plan(ticker: str, form_type: str, question: str) -> Dict[str, Any]:
             "form_type": form_type,
             "question": question,
         },
-        "reason": "Fallback selected general SEC filing question answering.",
+        "reason": (
+            "Fallback selected general SEC filing question answering."
+        ),
     }
-
 
 def validate_agent_plan(
     agent_plan: Dict[str, Any],
@@ -258,6 +390,27 @@ def normalize_tool_args(
             "ticker": ticker,
         }
 
+    elif tool_name == "build_sec_rag_index":
+        tool_args = {
+        "ticker": ticker,
+        "form_type": form_type
+    }
+    elif tool_name == "rag_search_sec_filing":
+        tool_args = {
+            "ticker": ticker,
+            "form_type": form_type,
+            "query": question,
+            "top_k": int(tool_args.get("top_k", 5))
+        }
+
+    elif tool_name == "answer_question_with_rag":
+        tool_args = {
+            "ticker": ticker,
+            "form_type": form_type,
+            "question": question
+        }
+
+
     elif tool_name == "evaluate_financial_answer":
         tool_args = {
             "answer": str(tool_args.get("answer", extract_numeric_answer(question))),
@@ -273,6 +426,7 @@ def decide_tool_with_llm(ticker: str, form_type: str, question: str) -> Dict[str
     LLM planner.
     Falls back to deterministic logic when no API key, quota issue, or invalid JSON.
     """
+
     api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
@@ -283,7 +437,7 @@ def decide_tool_with_llm(ticker: str, form_type: str, question: str) -> Dict[str
         skills = load_skills_md()
 
         prompt = f"""
-You are an autonomous MCP research analyst agent.
+You are an autonomous MCP research and financial analyst agent.
 
 Read SKILLS.md and choose the best MCP tool.
 
@@ -302,6 +456,9 @@ Allowed tools:
 4. answer_question_from_sec_filing
 5. analyze_financial_metrics
 6. evaluate_financial_answer
+7. build_sec_rag_index
+8. rag_search_sec_filing
+9. answer_question_with_rag
 
 Return ONLY valid JSON in this exact structure:
 {{
@@ -316,7 +473,10 @@ Tool selection rules:
 - If user asks to search or find relevant filing text, use search_latest_filing.
 - If user asks about EPS, operating income, revenue, net income, dividends, payout ratio, YoY change, percentage growth, margin, or profitability, use analyze_financial_metrics.
 - If user asks to evaluate or validate an answer against ground truth, use evaluate_financial_answer.
-- For general narrative SEC filing questions, use answer_question_from_sec_filing.
+- If user asks a narrative question about filing content, risks, strategy, competition, AI, supply chain, or management discussion, prefer answer_question_with_rag.
+- If user asks to build or refresh RAG index, use build_sec_rag_index.
+- If user asks to search filing evidence semantically, use rag_search_sec_filing.
+- For narrative SEC filing questions about risks, uncertainties, management discussion, strategy, outlook, competition, AI, supply chain, cybersecurity, regulation, or growth drivers, ALWAYS use answer_question_with_rag.Do NOT use answer_question_from_sec_filing unless RAG is unavailable.
 
 Argument rules:
 - get_company_cik must use: {{"ticker": "{ticker}"}}
@@ -361,7 +521,7 @@ def synthesize_answer(
         client = OpenAI(api_key=api_key)
 
         prompt = f"""
-You are a professional SEC research analyst.
+You are a professional SEC research and financial analyst.
 
 User question:
 {question}
@@ -375,11 +535,21 @@ MCP tool result:
 Create a clear analyst-style answer.
 
 Required format:
-1. Direct Answer
-2. Evidence / Calculation
-3. Analyst Interpretation
-4. Limitations
-5. Disclaimer
+
+## Summary
+Give a 2-3 sentence direct answer.
+
+## Evidence and Calculation
+Show the metric values, prior/current fiscal years, and calculation.
+
+## Analyst Interpretation
+Explain what the result means from a business and financial perspective.
+
+## Limitations
+List 2-3 limitations.
+
+## Disclaimer
+State that this is based on SEC filing data and is not investment advice.
 
 Rules:
 - Use only the MCP tool result.
@@ -387,6 +557,8 @@ Rules:
 - If financial_analytics is available, use those values.
 - If an evaluation result is available, clearly explain pass/fail.
 - If the exact requested metric is not available, say so clearly.
+- Use markdown headings with ##.
+- Do not use numbered headings like "1. Direct Answer".
 - Keep the answer concise and academic.
 """
 
